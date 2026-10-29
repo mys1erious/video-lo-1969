@@ -455,7 +455,7 @@ function drawOverlay(t) {
     og.fillText(typeOn('22:30  talked to SRI host to host   CSK', T.pen, 11, t), 66, 1250); og.globalAlpha = 1; }
   // ending: the first link on the planet, then the scale
   { const s = SENT[10], a = sm(s.t - .1, s.t + .05, t); if (a > 0) { shade(false); const gr = og.createLinearGradient(0, 0, 0, 480); gr.addColorStop(0, 'rgba(3,4,6,.82)'); gr.addColorStop(1, 'rgba(3,4,6,0)');
-    og.globalAlpha = a; og.fillStyle = gr; og.fillRect(0, 0, 1080, 480); const gb = og.createLinearGradient(0, 980, 0, 1350); gb.addColorStop(0, 'rgba(3,4,6,0)'); gb.addColorStop(1, 'rgba(3,4,6,.9)'); og.fillStyle = gb; og.fillRect(0, 980, 1080, 370); shade(true); const W = s.words;
+    og.globalAlpha = a; og.fillStyle = gr; og.fillRect(-1500, -1500, 4080, 1980); const gb = og.createLinearGradient(0, 980, 0, 1350); gb.addColorStop(0, 'rgba(3,4,6,0)'); gb.addColorStop(1, 'rgba(3,4,6,.9)'); og.fillStyle = gb; og.fillRect(-1500, 980, 4080, 1900); shade(true); const W = s.words; // scrims run past the 4:5 area so tall phones get no hard edge
     og.fillStyle = CREAM; words([{ ...W[0], w: '57' }, ...W.slice(1, 3)], t, 66, 190, 70, 948); words(W.slice(3), t, 66, 290, 70, 948);
     if (t > T.globe && t < 55) { const pa = sm(T.globe + .15, T.globe + .5, t) * (1 - sm(53.9, 54.5, t)), v = new THREE.Vector3();
       const [x1, y1] = project(FIRST.dots[0].getWorldPosition(v)), [x2, y2] = project(FIRST.dots[1].getWorldPosition(v));
