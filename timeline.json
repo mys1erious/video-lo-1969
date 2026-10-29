@@ -1,0 +1,619 @@
+{
+"sent": [
+{
+"t": 0.48,
+"off": 0.01,
+"dur": 4.39,
+"text": "October twenty-ninth, nineteen sixty-nine. Ten thirty at night.",
+"words": [
+{
+"w": "October",
+"t": 0.55
+},
+{
+"w": "twenty-ninth,",
+"t": 1.11
+},
+{
+"w": "nineteen",
+"t": 2.11
+},
+{
+"w": "sixty-nine.",
+"t": 2.55
+},
+{
+"w": "Ten",
+"t": 3.75
+},
+{
+"w": "thirty",
+"t": 3.99
+},
+{
+"w": "at",
+"t": 4.23
+},
+{
+"w": "night.",
+"t": 4.39
+}
+]
+},
+{
+"t": 5.05,
+"off": 4.62,
+"dur": 8.9,
+"text": "At UCLA, Charley Kline puts on a telephone headset. Three hundred and fifty miles north, at SRI, Bill Duvall puts on his.",
+"words": [
+{
+"w": "At",
+"t": 5.15
+},
+{
+"w": "UCLA,",
+"t": 5.31
+},
+{
+"w": "Charley",
+"t": 6.51
+},
+{
+"w": "Kline",
+"t": 6.83
+},
+{
+"w": "puts",
+"t": 7.23
+},
+{
+"w": "on",
+"t": 7.43
+},
+{
+"w": "a",
+"t": 7.55
+},
+{
+"w": "telephone",
+"t": 7.83
+},
+{
+"w": "headset.",
+"t": 8.11
+},
+{
+"w": "Three",
+"t": 9.15
+},
+{
+"w": "hundred",
+"t": 9.31
+},
+{
+"w": "and",
+"t": 9.63
+},
+{
+"w": "fifty",
+"t": 9.75
+},
+{
+"w": "miles",
+"t": 10.03
+},
+{
+"w": "north,",
+"t": 10.43
+},
+{
+"w": "at",
+"t": 10.99
+},
+{
+"w": "SRI,",
+"t": 11.15
+},
+{
+"w": "Bill",
+"t": 12.19
+},
+{
+"w": "Duvall",
+"t": 12.39
+},
+{
+"w": "puts",
+"t": 12.83
+},
+{
+"w": "on",
+"t": 13.07
+},
+{
+"w": "his.",
+"t": 13.23
+}
+]
+},
+{
+"t": 14.05,
+"off": 13.5,
+"dur": 3.82,
+"text": "Charley is going to log in to Bill's computer. He types L.",
+"words": [
+{
+"w": "Charley",
+"t": 14.35
+},
+{
+"w": "is",
+"t": 14.55
+},
+{
+"w": "going",
+"t": 14.71
+},
+{
+"w": "to",
+"t": 14.91
+},
+{
+"w": "log",
+"t": 15.03
+},
+{
+"w": "in",
+"t": 15.27
+},
+{
+"w": "to",
+"t": 15.39
+},
+{
+"w": "Bill's",
+"t": 15.51
+},
+{
+"w": "computer.",
+"t": 15.75
+},
+{
+"w": "He",
+"t": 16.71
+},
+{
+"w": "types",
+"t": 16.87
+},
+{
+"w": "L.",
+"t": 17.27
+}
+]
+},
+{
+"t": 21.14,
+"off": 17.33,
+"dur": 1.31,
+"text": "He types O.",
+"words": [
+{
+"w": "He",
+"t": 21.25
+},
+{
+"w": "types",
+"t": 21.41
+},
+{
+"w": "O.",
+"t": 21.81
+}
+]
+},
+{
+"t": 25.25,
+"off": 18.653,
+"dur": 1.187,
+"text": "He types G.",
+"words": [
+{
+"w": "He",
+"t": 25.45
+},
+{
+"w": "types",
+"t": 25.637
+},
+{
+"w": "G.",
+"t": 25.957
+}
+]
+},
+{
+"t": 29.91,
+"off": 20.087,
+"dur": 2.473,
+"text": "The computer at SRI had crashed.",
+"words": [
+{
+"w": "The",
+"t": 30.05
+},
+{
+"w": "computer",
+"t": 30.303
+},
+{
+"w": "at",
+"t": 30.623
+},
+{
+"w": "SRI",
+"t": 30.783
+},
+{
+"w": "had",
+"t": 31.343
+},
+{
+"w": "crashed.",
+"t": 31.503
+}
+]
+},
+{
+"t": 32.71,
+"off": 22.533,
+"dur": 3.827,
+"text": "So the first message ever sent on the internet was... lo.",
+"words": [
+{
+"w": "So",
+"t": 32.95
+},
+{
+"w": "the",
+"t": 33.057
+},
+{
+"w": "first",
+"t": 33.217
+},
+{
+"w": "message",
+"t": 33.537
+},
+{
+"w": "ever",
+"t": 34.017
+},
+{
+"w": "sent",
+"t": 34.337
+},
+{
+"w": "on",
+"t": 34.537
+},
+{
+"w": "the",
+"t": 34.617
+},
+{
+"w": "internet",
+"t": 34.737
+},
+{
+"w": "was...",
+"t": 35.297
+},
+{
+"w": "lo.",
+"t": 36.017
+}
+]
+},
+{
+"t": 36.84,
+"off": 26.323,
+"dur": 1.957,
+"text": "As in, lo and behold.",
+"words": [
+{
+"w": "As",
+"t": 37.05
+},
+{
+"w": "in,",
+"t": 37.157
+},
+{
+"w": "lo",
+"t": 37.717
+},
+{
+"w": "and",
+"t": 37.877
+},
+{
+"w": "behold.",
+"t": 38.037
+}
+]
+},
+{
+"t": 39.44,
+"off": 28.29,
+"dur": 3.35,
+"text": "An hour later, they tried again. It worked.",
+"words": [
+{
+"w": "An",
+"t": 39.55
+},
+{
+"w": "hour",
+"t": 39.71
+},
+{
+"w": "later,",
+"t": 40.03
+},
+{
+"w": "they",
+"t": 40.67
+},
+{
+"w": "tried",
+"t": 40.79
+},
+{
+"w": "again.",
+"t": 41.15
+},
+{
+"w": "It",
+"t": 41.87
+},
+{
+"w": "worked.",
+"t": 42.11
+}
+]
+},
+{
+"t": 43.2,
+"off": 31.61,
+"dur": 4.07,
+"text": "Nobody had a camera. The only record is one line in a logbook.",
+"words": [
+{
+"w": "Nobody",
+"t": 43.35
+},
+{
+"w": "had",
+"t": 43.71
+},
+{
+"w": "a",
+"t": 43.83
+},
+{
+"w": "camera.",
+"t": 43.91
+},
+{
+"w": "The",
+"t": 44.79
+},
+{
+"w": "only",
+"t": 44.99
+},
+{
+"w": "record",
+"t": 45.27
+},
+{
+"w": "is",
+"t": 45.71
+},
+{
+"w": "one",
+"t": 45.91
+},
+{
+"w": "line",
+"t": 46.07
+},
+{
+"w": "in",
+"t": 46.27
+},
+{
+"w": "a",
+"t": 46.39
+},
+{
+"w": "logbook.",
+"t": 46.59
+}
+]
+},
+{
+"t": 51.25,
+"off": 35.64,
+"dur": 3.08,
+"text": "Fifty-seven years later, you're watching this on it.",
+"words": [
+{
+"w": "Fifty-seven",
+"t": 51.45
+},
+{
+"w": "years",
+"t": 52.17
+},
+{
+"w": "later,",
+"t": 52.41
+},
+{
+"w": "you're",
+"t": 53.13
+},
+{
+"w": "watching",
+"t": 53.41
+},
+{
+"w": "this",
+"t": 53.69
+},
+{
+"w": "on",
+"t": 53.93
+},
+{
+"w": "it.",
+"t": 54.09
+}
+]
+}
+],
+"dlg": [
+{
+"id": "k_l",
+"t": 18.4,
+"side": "ucla",
+"text": "Did you get the L?",
+"dur": 1.22,
+"words": [
+{
+"w": "Did",
+"t": 18.4
+},
+{
+"w": "you",
+"t": 18.58
+},
+{
+"w": "get",
+"t": 18.68
+},
+{
+"w": "the",
+"t": 18.84
+},
+{
+"w": "L?",
+"t": 19.08
+}
+]
+},
+{
+"id": "d_l",
+"t": 19.85,
+"side": "sri",
+"text": "Got the L.",
+"dur": 1.06,
+"words": [
+{
+"w": "Got",
+"t": 19.85
+},
+{
+"w": "the",
+"t": 20.05
+},
+{
+"w": "L.",
+"t": 20.33
+}
+]
+},
+{
+"id": "k_o",
+"t": 22.7,
+"side": "ucla",
+"text": "Did you get the O?",
+"dur": 1.22,
+"words": [
+{
+"w": "Did",
+"t": 22.7
+},
+{
+"w": "you",
+"t": 22.9
+},
+{
+"w": "get",
+"t": 23.06
+},
+{
+"w": "the",
+"t": 23.2
+},
+{
+"w": "O?",
+"t": 23.38
+}
+]
+},
+{
+"id": "d_o",
+"t": 24.15,
+"side": "sri",
+"text": "Got the O.",
+"dur": 0.98,
+"words": [
+{
+"w": "Got",
+"t": 24.15
+},
+{
+"w": "the",
+"t": 24.33
+},
+{
+"w": "O.",
+"t": 24.51
+}
+]
+},
+{
+"id": "k_g",
+"t": 26.75,
+"side": "ucla",
+"text": "Did you get the G?",
+"dur": 1.14,
+"words": [
+{
+"w": "Did",
+"t": 26.75
+},
+{
+"w": "you",
+"t": 26.85
+},
+{
+"w": "get",
+"t": 26.95
+},
+{
+"w": "the",
+"t": 27.09
+},
+{
+"w": "G?",
+"t": 27.31
+}
+]
+}
+]
+}

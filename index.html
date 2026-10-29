@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LO: the first message</title>
+<meta name="description" content="29 October 1969, 22:30. UCLA tried to log in to SRI over the ARPANET. L, O, then the SRI computer crashed. A short film in type, light and sound.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Caveat:wght@600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #050607; }
+  canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; cursor: ew-resize; }
+  .ui { position: fixed; font: 700 12px/1 "Space Mono", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase;
+        color: #efe6d4; user-select: none; -webkit-user-select: none; }
+  #snd { top: max(16px, env(safe-area-inset-top)); right: 16px; min-height: 44px; padding: 0 16px; background: none; border: 1.5px solid currentColor; cursor: pointer; opacity: .85; }
+  #hint { left: 16px; bottom: 22px; opacity: .6; pointer-events: none; }
+  #bar { left: 0; bottom: 0; width: 100%; height: 3px; background: #efe6d4; opacity: .6; transform-origin: 0 0; transform: scaleX(0); pointer-events: none; }
+  .clean .ui, .play .ui { display: none; }
+</style>
+</head>
+<body>
+<canvas id="gl" role="img" aria-label="Short film. 29 October 1969, 22:30. Charley Kline at UCLA and Bill Duvall at SRI, 350 miles apart, on the phone. Charley types L: did you get the L? Got the L. O: got the O. G: the SRI computer crashes. So the first message on the internet was LO, as in lo and behold. An hour later LOGIN worked. The only record is one line in the UCLA log: 22:30, talked to SRI host to host."></canvas>
+<button id="snd" class="ui" type="button" aria-pressed="false">sound: off</button>
+<div id="hint" class="ui">drag to scrub · space to replay</div>
+<div id="bar" class="ui"></div>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const Q = new URLSearchParams(location.search);
+const CLEAN = Q.has('clean'), PLAY = Q.has('play'), FREEZE = Q.has('t') ? +Q.get('t') : null;
+if (CLEAN) document.body.classList.add('clean'); if (PLAY) document.body.classList.add('play');
+
+const TL = await (await fetch('timeline.json')).json();
+const T = { dur: 61, globe: 52.4, strike: [17.30, 21.83, 25.98], crash: 28.0, black: 28.55, after: 30.0, cutLO: 32.9, beam: 33.6, lo: 36.08,
+  retry: [40.2, 40.45, 40.7], fill: 41.3, sriBack: 39.9, worked: 42.11, cutLog: 43.3, pen: 47.4, penEnd: 51.0, net: 51.0 };
+// each pulse leaves UCLA at t0 and reaches SRI at t1
+const PULSES = [[17.35, 18.15], [21.88, 22.55], [26.05, 27.95], ...T.retry.map((r) => [r + 0.03, r + 0.5])];
+
+// ---------- helpers ----------
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const sm = (a, b, x) => { const k = cl((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+const lerp = (a, b, k) => a + (b - a) * k;
+const EASE = { io: (k) => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2, in: (k) => k * k * k, out: (k) => 1 - Math.pow(1 - k, 3), lin: (k) => k };
+function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const INK = '#1b1814', PAPER = '#ebe3d1', RED = '#d8402a', CREAM = '#efe6d4';
+const F = (px, w = 700) => `${w} ${px}px "Space Mono", ui-monospace, monospace`;
+const HAND = (px) => `600 ${px}px Caveat, cursive`;
+const pulseU = (i, t) => { const [a, b] = PULSES[i]; return t < a || t > b + 0.12 ? -1 : (i === 2 ? EASE.in(cl((t - a) / (b - a))) * .55 + cl((t - a) / (b - a)) * .45 : EASE.io(cl((t - a) / (b - a)))); };
+const flash = (times, t, k = 14) => times.reduce((m, s) => t >= s ? Math.max(m, Math.exp(-(t - s) * k)) : m, 0);
+
+try { await Promise.all([document.fonts.load(F(100)), document.fonts.load(F(100, 400)), document.fonts.load(HAND(100))]); } catch (e) { /* system fonts */ }
+const font = await new FontLoader().loadAsync('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/fonts/droid/droid_sans_mono_regular.typeface.json');
+
+// ---------- renderer, scene, camera ----------
+const cv = document.getElementById('gl');
+const R = new THREE.WebGLRenderer({ canvas: cv, antialias: true, preserveDrawingBuffer: true });
+R.setPixelRatio(Math.min(devicePixelRatio, 2));
+R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
+R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.0;
+const scene = new THREE.Scene(), FOG = new THREE.FogExp2(0x050607, 0.011); scene.background = new THREE.Color(0x050607); scene.fog = FOG;
+const cam = new THREE.PerspectiveCamera(32, 0.8, 0.1, 400); cam.up.set(0, 0, 1);
+
+function canvasTex(c, srgb = true) { const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+// table: dark walnut
+{ const c = mk(1024, 1024), g = c.getContext('2d'), r = rng(3);
+  g.fillStyle = '#2a1f17'; g.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 900; i++) { const y = r() * 1024, a = r() * .09; g.strokeStyle = r() < .5 ? `rgba(0,0,0,${a})` : `rgba(120,80,50,${a * .7})`; g.lineWidth = 1 + r() * 4;
+    g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= 1024; x += 64) g.lineTo(x, y + Math.sin(x * .01 + i) * 3 + (r() - .5) * 2); g.stroke(); }
+  const tex = canvasTex(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(10, 10);
+  const table = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshStandardMaterial({ map: tex, roughness: .78, metalness: 0 }));
+  table.receiveShadow = true; scene.add(table); }
+
+// soft contact shadow under each sheet
+const shadowTex = (() => { const c = mk(256, 256), g = c.getContext('2d'); g.filter = 'blur(18px)'; g.fillStyle = '#000'; g.fillRect(40, 40, 176, 176); return canvasTex(c, false); })();
+function paperBase(w, h, seed) {
+  const c = mk(w, h), g = c.getContext('2d'), r = rng(seed);
+  g.fillStyle = PAPER; g.fillRect(0, 0, w, h);
+  const id = g.getImageData(0, 0, w, h), d = id.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (r() - .5) * 12; d[i] += n; d[i + 1] += n; d[i + 2] += n * .9; }
+  g.putImageData(id, 0, 0);
+  g.globalAlpha = .07; g.strokeStyle = '#7d6c52'; g.lineWidth = 1.2;
+  for (let i = 0; i < w * h / 7000; i++) { const x = r() * w, y = r() * h, a = r() * 6.28, l = 8 + r() * 26;
+    g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a) * l * .5 + r() * 5, y + Math.sin(a) * l * .5 + r() * 5, x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); }
+  g.globalAlpha = 1; const gr = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * .25, w / 2, h / 2, Math.max(w, h) * .72);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(70,45,15,.2)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  return c;
+}
+function sheet(w, h, ppu, x, y, rot, seed) {
+  const c = mk(w * ppu, h * ppu), tex = canvasTex(c);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: .93 }));
+  m.position.set(x, y, 0.012); m.rotation.z = rot; m.receiveShadow = true; scene.add(m);
+  const s = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.45, h * 1.45), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: .85, depthWrite: false }));
+  s.position.set(x + .12, y - .14, 0.004); s.rotation.z = rot; scene.add(s);
+  return { c, g: c.getContext('2d'), tex, m, w, h, ppu, base: paperBase(w * ppu, h * ppu, seed), key: '' };
+}
+// world point of a texture pixel on a sheet
+function onSheet(S, px, py, z = 0.02) { const v = new THREE.Vector3(px / S.ppu - S.w / 2, S.h / 2 - py / S.ppu, 0).applyAxisAngle(new THREE.Vector3(0, 0, 1), S.m.rotation.z); return v.add(S.m.position).setZ(z); }
+
+const U = sheet(8, 6, 200, 0, -5.2, 0.015, 11);     // UCLA terminal printout
+const S = sheet(8, 5, 200, 0, 6.65, -0.02, 12);     // SRI printout
+const LOG = sheet(7, 9, 200, 12.2, -3.4, -0.035, 13); // the IMP log page
+
+// ---------- lights ----------
+scene.add(new THREE.HemisphereLight(0x2c3038, 0x090706, .35));
+const moon = new THREE.DirectionalLight(0x8ea6cc, .1); moon.position.set(-20, 10, 30); scene.add(moon);
+function spot(color, pos, tgt, angle, pen, shadow = true) {
+  const s = new THREE.SpotLight(color, 0, 0, angle, pen, 0); s.position.set(...pos); s.target.position.set(...tgt); scene.add(s, s.target);
+  if (shadow) { s.castShadow = true; s.shadow.mapSize.set(2048, 2048); s.shadow.bias = -0.0004; s.shadow.camera.near = 2; s.shadow.camera.far = 60; }
+  return s;
+}
+const lampU = spot(0xffc48a, [-3, -11.5, 10], [0, -5.0, 0], .46, .95);
+const lampS = spot(0xffc48a, [3, 12.5, 10], [0, 6.6, 0], .44, .95);
+const beam = spot(0xfff0da, [-8.6, 3.2, 12], [-8.6, 5.9, 0], .24, .5);
+const logLamp = spot(0xffcf9a, [16.5, -0.5, 10], [12.4, -2.8, 0], .42, .95);
+const flashL = new THREE.PointLight(0xffb066, 0, 4, 2); scene.add(flashL);
+
+// ---------- wire and phone cord ----------
+const WIRE = new THREE.CatmullRomCurve3([[0, -2.2], [.35, -.6], [-.35, 1.0], [.25, 2.6], [0, 4.15]].map(([x, y]) => new THREE.Vector3(x, y, .06)));
+const wireGeo = new THREE.TubeGeometry(WIRE, 600, .03, 8);
+const wire = new THREE.Mesh(wireGeo, new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: .5, metalness: .3 })); wire.castShadow = true; scene.add(wire);
+const glowMat = new THREE.ShaderMaterial({
+  uniforms: { uDraw: { value: 0 }, uP: { value: [-1, -1, -1, -1, -1, -1, -1, -1] }, uBase: { value: 0 }, uBurn: { value: 0 }, uDead: { value: 0 }, uRed: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform float uDraw, uP[8], uBase, uBurn, uDead, uRed; varying vec2 vUv;
+    void main(){ float u = vUv.x; if (u > uDraw) discard;
+      float a = uBase * (1.0 - uDead);
+      for (int i = 0; i < 8; i++) { if (uP[i] < 0.0) continue; float d = u - uP[i];
+        a += exp(-pow(d / 0.018, 2.0)) * 6.0 + (d < 0.0 ? exp(d / 0.09) * 1.1 : 0.0); }
+      vec3 col = mix(vec3(1.0, .72, .42), vec3(1.0, .18, .08), uRed) * a;
+      float b = smoothstep(1.0 - uBurn - .05, 1.0 - uBurn, u) * (1.0 - smoothstep(0.0, 1.0, uDead * 1.4 - (1.0 - u)));
+      col += vec3(1.0, .15, .05) * b * 3.0 * step(.001, uBurn);
+      gl_FragColor = vec4(col, 1.0); }`,
+  transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+const glow = new THREE.Mesh(new THREE.TubeGeometry(WIRE, 600, .045, 8), glowMat); scene.add(glow);
+// the wire draws itself; index groups follow the path, so drawRange grows from UCLA to SRI
+const setDraw = (geo, k) => geo.setDrawRange(0, Math.floor(geo.index.count * cl(k) / 6) * 6);
+// coiled phone cord, parallel to the wire
+const CORD = new THREE.Curve(); CORD.getPoint = (s, out = new THREE.Vector3()) => { const y = lerp(-2.2, 4.15, s), a = s * 140 * Math.PI * 2;
+  return out.set(2.7 + Math.sin(y * .7) * .12 + Math.cos(a) * .075, y, .1 + Math.sin(a) * .075); };
+const cordGeo = new THREE.TubeGeometry(CORD, 5000, .02, 5);
+const cord = new THREE.Mesh(cordGeo, new THREE.MeshStandardMaterial({ color: 0x2c2a27, roughness: .55 })); cord.castShadow = true; scene.add(cord);
+// labels lying on the table along the wire and cord
+function label(text, w, h, x, y, rot, size = 70) {
+  const c = mk(1024, 128), g = c.getContext('2d'); g.font = F(size, 400); g.fillStyle = CREAM; g.textBaseline = 'middle'; g.fillText(text, 8, 64);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: canvasTex(c), transparent: true, opacity: 0, depthWrite: false }));
+  m.position.set(x, y, .02); m.rotation.z = rot; scene.add(m); return m;
+}
+const labWire = label('ARPANET · 350 MILES', 6.4, .8, 1.05, .95, Math.PI / 2);
+const labCord = label('PHONE', 6.4, .8, 3.35, .95, Math.PI / 2);
+
+// pulses
+const pulses = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.SphereGeometry(.085, 16, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 2) }));
+  const l = new THREE.PointLight(0xffb066, 0, 3.5, 2); scene.add(m, l); return { m, l }; });
+
+// ---------- 3D letters ----------
+const paperMat = new THREE.MeshStandardMaterial({ color: 0xe9e1cf, roughness: .55, metalness: 0 });
+function textGeo(s, size, depth) {
+  const g = new TextGeometry(s, { font, size, depth, curveSegments: 12, bevelEnabled: true, bevelThickness: depth * .1, bevelSize: size * .022, bevelSegments: 4 });
+  g.computeBoundingBox(); g.center(); g.computeBoundingBox(); return g;
+}
+const loGeo = textGeo('LO', 2.5, .75); loGeo.rotateX(Math.PI / 2);
+const LO = new THREE.Mesh(loGeo, paperMat); LO.castShadow = LO.receiveShadow = true; scene.add(LO);
+const LO_H = loGeo.boundingBox.max.y - loGeo.boundingBox.min.y; // after rotateX, text height lies along z
+loGeo.computeBoundingBox(); const LO_Z = -loGeo.boundingBox.min.z;
+const LO_AT = new THREE.Vector3(-8.6, 5.2, 0);
+
+// shards of the G, sparks, dust
+const shardGeo = (() => { const s = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(.16, .03), new THREE.Vector2(.06, .14)]);
+  const g = new THREE.ExtrudeGeometry(s, { depth: .02, bevelEnabled: false }); g.center(); return g; })();
+const NSH = 70, shards = new THREE.InstancedMesh(shardGeo, paperMat, NSH); shards.castShadow = true; scene.add(shards);
+const SH = (() => { const r = rng(21); return Array.from({ length: NSH }, () => { const a = r() * Math.PI * 2, sp = 1.2 + r() * 3.4;
+  return { a0: a, r0: .25 + r() * .45, v: [Math.cos(a) * sp, Math.sin(a) * sp, 1.5 + r() * 4], w: [(r() - .5) * 20, (r() - .5) * 20, (r() - .5) * 20], s: .6 + r() * 1.1 }; }); })();
+const NSP = 160, spGeo = new THREE.BufferGeometry(); spGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NSP * 3), 3));
+const sparks = new THREE.Points(spGeo, new THREE.PointsMaterial({ color: new THREE.Color(3, 1.4, .5), size: .07, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); scene.add(sparks);
+const SPK = (() => { const r = rng(5); return Array.from({ length: NSP }, () => { const a = r() * Math.PI * 2, e = r() * 1.2, sp = 2 + r() * 6;
+  return { v: [Math.cos(a) * Math.cos(e) * sp, Math.sin(a) * Math.cos(e) * sp, Math.sin(e) * sp + 1], t: r() * .3, life: .35 + r() * .5 }; }); })();
+const ND = 260, dGeo = new THREE.BufferGeometry(); dGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ND * 3), 3));
+const dustMat = new THREE.PointsMaterial({ color: new THREE.Color(1.4, 1.3, 1.15), size: .035, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+const dust = new THREE.Points(dGeo, dustMat); scene.add(dust);
+const DU = (() => { const r = rng(9); return Array.from({ length: ND }, () => [r() * 6.28, r(), r() * 9, r() * 6.28, r()]); })();
+// visible light cone of the beam
+const coneH = 12, cone = new THREE.Mesh(new THREE.ConeGeometry(coneH * Math.tan(.24), coneH, 48, 1, true), new THREE.ShaderMaterial({
+  uniforms: { uA: { value: 0 } }, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  vertexShader: 'varying float vY; varying vec3 vN, vV; void main(){ vY = uv.y; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+  fragmentShader: 'uniform float uA; varying float vY; varying vec3 vN, vV; void main(){ float f = pow(abs(dot(vN, vV)), 1.5); gl_FragColor = vec4(vec3(1.0,.93,.82) * uA * f * (0.25 + 0.75 * vY) * 0.16, 1.0); }' }));
+{ const top = new THREE.Vector3(-8.6, 3.2, 12), bot = new THREE.Vector3(-8.6, 5.9, 0), mid = top.clone().add(bot).multiplyScalar(.5);
+  cone.position.copy(mid); cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), bot.clone().sub(top).normalize()); cone.scale.y = top.distanceTo(bot) / coneH; scene.add(cone); }
+
+// everything so far lives on the desk; the ending swaps it for the planet
+const W1 = new THREE.Group(); for (const o of [...scene.children]) W1.add(o); scene.add(W1);
+
+// ---------- the ending: the one wire, then the whole planet at night ----------
+const R0 = 10, GL = new THREE.Group(); GL.visible = false; scene.add(GL);
+// lat/lon to a point that matches SphereGeometry's uv layout (u = 0 at lon -180)
+const ll = (lat, lon, r = R0) => { const ph = (lon + 180) * Math.PI / 180, th = (90 - lat) * Math.PI / 180;
+  return new THREE.Vector3(-Math.cos(ph) * Math.sin(th) * r, Math.cos(th) * r, Math.sin(ph) * Math.sin(th) * r); };
+const nightImg = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'img/earth-night.jpg'; });
+const nightTex = new THREE.Texture(nightImg); nightTex.colorSpace = THREE.SRGBColorSpace; nightTex.anisotropy = 8; nightTex.needsUpdate = true;
+const earthU = { tMap: { value: nightTex }, uLights: { value: 1 }, uBase: { value: .5 } };
+const earth = new THREE.Mesh(new THREE.SphereGeometry(R0, 192, 128), new THREE.ShaderMaterial({ uniforms: earthU,
+  vertexShader: 'varying vec2 vUv; varying vec3 vN, vV; void main(){ vUv = uv; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+  fragmentShader: `uniform sampler2D tMap; uniform float uLights, uBase; varying vec2 vUv; varying vec3 vN, vV;
+    void main(){ vec3 c = texture2D(tMap, vUv).rgb; float city = smoothstep(.05, .35, c.r - c.b * .55);
+      vec3 col = c * uBase + vec3(1.0, .72, .4) * city * uLights * 2.6;
+      col += vec3(.25, .45, 1.0) * pow(1.0 - max(dot(vN, vV), 0.0), 3.0) * .9;   // atmosphere at the limb
+      gl_FragColor = vec4(col, 1.0); }` }));
+GL.add(earth);
+// light-weighted samples of where people are, for the ends of the links
+const LIGHTS = (() => { const c = mk(1024, 512), g = c.getContext('2d'); g.drawImage(nightImg, 0, 0, 1024, 512); const d = g.getImageData(0, 0, 1024, 512).data, cum = [], pt = []; let sum = 0;
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 1024; x++) { const i = (y * 1024 + x) * 4, v = d[i] - d[i + 2] * .55; if (v > 18) { sum += v * v; cum.push(sum); pt.push([90 - (y + .5) / 512 * 180, (x + .5) / 1024 * 360 - 180]); } }
+  return (u) => { let lo = 0, hi = cum.length - 1; const k = u * sum; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < k) lo = m + 1; else hi = m; } return pt[lo]; }; })();
+const LA = [34.07, -118.44], MP = [37.45, -122.18];
+const arcPoint = (a, b, ang, u, lift) => a.clone().applyAxisAngle(new THREE.Vector3().crossVectors(a, b).normalize(), ang * u).multiplyScalar(R0 * (1 + lift * Math.sin(Math.PI * u)));
+const ARCS = (() => {
+  const r = rng(57), N = 1600, SEG = 40, la = ll(...LA, 1).normalize(), pos = [], aU = [], aT = [], aS = [], times = [];
+  for (let n = 0; n < N; n++) {
+    const p = LIGHTS(r()), q = LIGHTS(r()), A2 = ll(...p, 1).normalize(), B2 = ll(...q, 1).normalize(), ang = A2.angleTo(B2);
+    if (ang < .1) { n--; continue; }
+    const t0 = T.globe + .5 + 3.6 * Math.pow(A2.angleTo(la) / Math.PI, .8) + r() * .35, lift = .01 + .13 * ang / Math.PI, seed = r();
+    times.push(t0);
+    for (let k = 0; k < SEG; k++) { const u0 = k / SEG, u1 = (k + 1) / SEG;
+      pos.push(...arcPoint(A2, B2, ang, u0, lift).toArray(), ...arcPoint(A2, B2, ang, u1, lift).toArray()); aU.push(u0, u1); aT.push(t0, t0); aS.push(seed, seed); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  [['aU', aU], ['aT', aT], ['aS', aS]].forEach(([k, v]) => g.setAttribute(k, new THREE.Float32BufferAttribute(v, 1)));
+  const uniforms = { uT: { value: 0 } };
+  GL.add(new THREE.LineSegments(g, new THREE.ShaderMaterial({ uniforms, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    vertexShader: `attribute float aU, aT, aS; uniform float uT; varying float vA;
+      void main(){ float age = uT - aT, grow = clamp(age / .7, 0.0, 1.0), p = fract(age * (.3 + aS * .35) + aS);
+        vA = step(0.0, age) * step(aU, grow) * (.08 + 1.5 * exp(-pow((aU - p) / .03, 2.0)) + .9 * exp(-pow((aU - grow) / .04, 2.0)) * step(grow, .999));
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: 'varying float vA; void main(){ gl_FragColor = vec4(vec3(1.0, .74, .45) * vA, 1.0); }' })));
+  return { uniforms, times };
+})();
+// the first link, UCLA to SRI, drawn like the wire on the desk
+const FIRST = (() => { const a = ll(...LA, 1).normalize(), b = ll(...MP, 1).normalize(), ang = a.angleTo(b);
+  const curve = new THREE.CatmullRomCurve3(Array.from({ length: 24 }, (_, i) => arcPoint(a, b, ang, i / 23, .004)));
+  const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 80, .0028, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 1.8, 1.1) })); GL.add(m);
+  const dots = [a, b].map((v) => { const d = new THREE.Mesh(new THREE.SphereGeometry(.01, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 3.5, 2.2) })); d.position.copy(v).multiplyScalar(R0 * 1.0005); GL.add(d); return d; });
+  return { m, dots, a, b }; })();
+
+// ---------- sheet drawings ----------
+const LOGIN = 'LOGIN';
+const STRUCK = [[T.strike[0], T.retry[0]], [T.strike[1], T.retry[1]], [T.strike[2], T.retry[2]], [T.fill + .05], [T.fill + .05]]; // SRI fills in IN, UCLA echoes it
+const ARRIVE = PULSES.map((p) => p[1]);
+function ink(g, s, x, y, size, color = INK, a = 1) { g.globalAlpha = a; g.font = F(size); g.fillStyle = color; g.fillText(s, x, y); g.globalAlpha = 1; }
+function drawU(t) {
+  const fl = STRUCK.map((s) => flash(s, t, 9)), on = STRUCK.map((s) => s.some((x) => t >= x));
+  const typed = Math.min(3, on.lastIndexOf(true) + 1), cur = t > 14.3 && t < T.crash ? Math.floor(t * 2.2) % 2 : 0;
+  const key = on.join() + fl.map((f) => (f * 12) | 0).join() + cur + (t > 14.3);
+  if (key === U.key) return; U.key = key;
+  const g = U.g; g.drawImage(U.base, 0, 0);
+  ink(g, 'UCLA · LOS ANGELES', 90, 120, 40, INK, .75); g.textAlign = 'right'; ink(g, 'SDS SIGMA 7', 1510, 120, 40, INK, .75); g.textAlign = 'left';
+  ink(g, '29 OCT 1969 · 22:30', 90, 178, 30, INK, .5);
+  g.fillStyle = INK; g.globalAlpha = .25; g.fillRect(90, 210, 1420, 3); g.globalAlpha = 1;
+  const size = 300; g.font = F(size); const adv = g.measureText('M').width, x0 = (1600 - adv * 5) / 2, y = 790;
+  for (let i = 0; i < 5; i++) {
+    const x = x0 + i * adv;
+    if (on[i]) { const k = fl[i]; g.save(); g.translate(x + adv / 2, y - 105); g.scale(1 + k * .07, 1 + k * .07);
+      if (k > .05) { g.globalAlpha = .35 * k; ink(g, LOGIN[i], -adv / 2 + 9, 105 + 6, size); }
+      g.globalAlpha = 1; ink(g, LOGIN[i], -adv / 2, 105, size); g.restore(); }
+    else { g.save(); g.setLineDash(i < 3 ? [14, 10] : [3, 9]); g.lineWidth = 6; g.strokeStyle = INK; g.globalAlpha = i < 3 ? .62 : .36; g.strokeText(LOGIN[i], x, y); g.restore(); }
+  }
+  if (cur && t < T.crash) { g.fillStyle = INK; g.fillRect(x0 + typed * adv + 14, y + 26, adv - 28, 18); }
+  g.textAlign = 'center'; ink(g, 'SRI FILLS IN THE REST', x0 + adv * 4, 1010, 28, INK, on[3] ? .15 : .45); g.textAlign = 'left';
+  U.tex.needsUpdate = true;
+}
+function drawS(t) {
+  const crash = t >= T.crash, rows = [...ARRIVE.slice(3).map((a) => t >= a), t >= T.fill, t >= T.fill];
+  const gl = t >= ARRIVE[2] ? Math.floor(t * 30) : 0;
+  const key = [t >= ARRIVE[0], t >= ARRIVE[1], t >= ARRIVE[2], crash ? Math.min(gl, Math.floor(T.crash * 30) + 12) : 0, rows.join(), flash(ARRIVE, t, 9).toFixed(1)].join();
+  if (key === S.key) return; S.key = key;
+  const g = S.g; g.drawImage(S.base, 0, 0);
+  ink(g, 'SRI · MENLO PARK', 90, 120, 40, INK, .75); g.textAlign = 'right'; ink(g, 'SDS 940', 1510, 120, 40, INK, .75); g.textAlign = 'left';
+  g.fillStyle = INK; g.globalAlpha = .25; g.fillRect(90, 160, 1420, 3); g.globalAlpha = 1;
+  const size = 300; g.font = F(size); const adv = g.measureText('M').width, x0 = (1600 - adv * 5) / 2, y = 560;
+  if (t >= ARRIVE[0]) ink(g, 'L', x0, y, size); if (t >= ARRIVE[1]) ink(g, 'O', x0 + adv, y, size);
+  if (t >= ARRIVE[2]) {
+    const r = rng(crash ? Math.min(gl, Math.floor(T.crash * 30) + 12) : 1), x = x0 + adv * 2;
+    g.save(); g.beginPath(); g.rect(x - 20, y - 260, adv + 40, crash ? 150 : 260); g.clip(); ink(g, 'G', x, y, size); g.restore();
+    if (crash) { for (let i = 0; i < 9; i++) { const yy = y - 220 + r() * 260; g.drawImage(S.c, x - 10, yy, adv + 20, 6 + r() * 24, x - 10 + (r() - .5) * 90, yy, adv + 20, 6 + r() * 24); }
+      g.fillStyle = RED; for (let i = 0; i < 6; i++) g.fillRect(x - 40 + r() * (adv + 40), y - 240 + r() * 260, 30 + r() * 200, 4 + r() * 10);
+      ink(g, '?', x + adv, y, size, RED, .9); }
+  }
+  if (rows.some(Boolean)) { const s2 = 150; g.font = F(s2); const a2 = g.measureText('M').width, x2 = (1600 - a2 * 5) / 2;
+    rows.forEach((v, i) => v && ink(g, LOGIN[i], x2 + i * a2, 860, s2)); }
+  S.tex.needsUpdate = true;
+}
+// the log page: scribbles for other entries, then the one line, written in as you watch
+const LOGL = { row: 760, segs: [['22:30', 70, T.pen, T.pen + .75], ['talked to SRI host to host', 300, T.pen + 1.0, T.pen + 2.75], ['CSK', 1150, T.pen + 3.0, T.pen + 3.5]] };
+const scrib = (() => { const c = mk(1400, 1800), g = c.getContext('2d'), r = rng(31); g.drawImage(LOG.base, 0, 0);
+  g.strokeStyle = 'rgba(90,120,170,.35)'; g.lineWidth = 2; for (let y = 300; y < 1760; y += 92) { g.beginPath(); g.moveTo(0, y); g.lineTo(1400, y); g.stroke(); }
+  g.strokeStyle = 'rgba(190,60,50,.35)'; g.beginPath(); g.moveTo(250, 0); g.lineTo(250, 1800); g.stroke();
+  g.font = HAND(84); g.fillStyle = 'rgba(40,40,48,.85)'; g.fillText('29 Oct 69', 520, 220);
+  g.strokeStyle = 'rgba(40,40,48,.55)'; g.lineWidth = 3.2; g.lineCap = 'round';
+  for (let row = 0; row < 4; row++) { const y = 380 + row * 92 - 20; let x = 290 + r() * 30; const end = 900 + r() * 350;
+    g.beginPath(); g.moveTo(x, y); while (x < end) { x += 6 + r() * 8; g.lineTo(x, y - Math.abs(Math.sin(x * .19 + row)) * (14 + r() * 16)); if (r() < .06) { x += 22; g.moveTo(x, y); } } g.stroke();
+  }
+  return c; })();
+function penProgress(t) { // returns [segment index, 0..1] of the pen
+  for (let i = LOGL.segs.length - 1; i >= 0; i--) if (t >= LOGL.segs[i][2]) return [i, cl((t - LOGL.segs[i][2]) / (LOGL.segs[i][3] - LOGL.segs[i][2]))];
+  return [-1, 0];
+}
+function drawLog(t) {
+  const [si, p] = penProgress(t), key = si + ':' + (p * 60 | 0);
+  if (key === LOG.key) return; LOG.key = key;
+  const g = LOG.g; g.drawImage(scrib, 0, 0); g.font = HAND(76); g.fillStyle = '#26262e';
+  LOGL.segs.forEach(([s, x, a, b], i) => { if (i > si) return; const w = g.measureText(s).width, k = i < si ? 1 : p;
+    g.save(); g.beginPath(); g.rect(x - 10, LOGL.row - 90, (w + 20) * k, 140); g.clip(); g.fillText(s, x, LOGL.row); g.restore(); });
+  LOG.tex.needsUpdate = true;
+}
+// ---------- camera ----------
+// [t0, t1, from position, from target, to position, to target, ease, aperture]
+const SHOTS = [
+  [0, 5.0, [.5, -18.6, 11.6], [.3, -4.6, 0], [.3, -15.8, 9.1], [.3, -4.2, 0], 'out', .002],
+  [5.0, 13.9, [.3, -15.8, 9.1], [.3, -4.2, 0], [0, -9.5, 24], [0, .7, 0], 'io', .0015],
+  [13.9, 17.25, [0, -9.5, 24], [0, .7, 0], [0, -9.9, 8.2], [0, -5.4, 0], 'io', .003],
+  [17.25, 18.4, [0, -9.9, 8.2], [0, -5.4, 0], [0, -1.5, 12.5], [0, 5.2, 0], 'io', .002],
+  [18.4, 20.0, [0, -1.5, 12.5], [0, 5.2, 0], [0, -9.0, 23], [0, .8, 0], 'io', .0015],
+  [20.0, 25.4, [0, -9.0, 23], [0, .8, 0], [0, -8.4, 21.5], [0, .9, 0], 'lin', .0015],
+  [25.4, 28.6, [0, -8.4, 21.5], [0, .9, 0], [.2, .4, 10.4], [0, 5.9, 0], 'in', .002],
+  [28.6, 32.9, [1.6, 1.6, 6.6], [.2, 6.2, .2], [1.2, 2.2, 6.0], [.2, 6.3, .2], 'lin', .004],
+  [32.9, 39.4, [-8.6, -9.0, 4.4], [-8.6, 5.2, 1.0], [-8.55, -5.6, 3.2], [-8.6, 5.2, .95], 'out', .003],
+  [39.4, 43.3, [0, -8.8, 23], [0, .8, 0], [0, -8.2, 21.6], [0, 1, 0], 'lin', .0015],
+  [43.3, 47.4, [13.6, -12.5, 9.5], [12.2, -3.0, 0], [10.8, -7.4, 4.8], [10.4, -2.7, 0], 'io', .006],
+  [47.4, 51.0, [10.8, -7.4, 4.8], [10.4, -2.7, 0], [12.4, -12.0, 8.8], [12.3, -2.7, 0], 'io', .004],
+  [51.0, 52.4, [12.4, -12.0, 8.8], [12.3, -2.7, 0], [1.0, -9.5, 30], [.4, .9, 0], 'in', .0008],
+];
+const IMP = [[T.strike[0], .03], [T.strike[1], .03], [T.strike[2], .045], [T.crash, .3], [T.lo, .1], ...T.retry.map((r) => [r, .015])];
+const camP = new THREE.Vector3(), camL = new THREE.Vector3(), A = new THREE.Vector3(), B = new THREE.Vector3();
+function placeCamera(t) {
+  if (t >= T.globe) { // straight down on California, then pull back to the planet
+    const k = EASE.out(cl((t - T.globe) / 5.6)), c0 = ll(35.8, -120.3, 1).normalize(), c1 = ll(24, -88, 1).normalize();
+    const dir = c0.clone().lerp(c1, sm(.05, 1, k)).normalize(), dist = R0 * Math.exp(lerp(Math.log(1.28), Math.log(4.7), k));
+    cam.up.set(0, 1, 0); cam.position.copy(dir).multiplyScalar(dist);
+    camL.copy(c0).multiplyScalar(R0).lerp(new THREE.Vector3(0, 2.6, 0), sm(.05, .7, k)); cam.lookAt(camL);
+    bokeh.uniforms.focus.value = cam.position.distanceTo(camL); bokeh.uniforms.aperture.value = .0004; return;
+  }
+  cam.up.set(0, 0, 1);
+  const s = SHOTS.find((s) => t >= s[0] && t < s[1]) || SHOTS.at(-1), k = EASE[s[6]](cl((t - s[0]) / (s[1] - s[0])));
+  camP.lerpVectors(A.set(...s[2]), B.set(...s[4]), k); camL.lerpVectors(A.set(...s[3]), B.set(...s[5]), k);
+  let x = 0, y = 0; for (const [ti, a] of IMP) { const d = t - ti; if (d < 0 || d > 1.5) continue; const e = a * Math.exp(-d * 6.5); x += e * Math.sin(d * 83 + ti); y += e * Math.cos(d * 71 + ti * 2); }
+  camP.x += x; camP.z += y; camL.x += x; camL.z += y;
+  cam.position.copy(camP); cam.lookAt(camL);
+  bokeh.uniforms.focus.value = camP.distanceTo(camL); bokeh.uniforms.aperture.value = s[7];
+}
+
+// ---------- post: DoF, bloom, then overlay type + film look + CRT collapse ----------
+const composer = new EffectComposer(R);
+composer.addPass(new RenderPass(scene, cam));
+const bokeh = new BokehPass(scene, cam, { focus: 10, aperture: .002, maxblur: .009 }); composer.addPass(bokeh);
+const bloom = new UnrealBloomPass(new THREE.Vector2(512, 640), .55, .5, .82); composer.addPass(bloom);
+composer.addPass(new OutputPass());
+const OV = mk(1080, 1350), og = OV.getContext('2d'), ovTex = new THREE.CanvasTexture(OV); ovTex.colorSpace = THREE.NoColorSpace; ovTex.generateMipmaps = false; ovTex.minFilter = THREE.LinearFilter;
+const fin = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, tOver: { value: ovTex }, uTime: { value: 0 }, uFade: { value: 0 }, uCA: { value: 0 }, uCol: { value: 0 }, uGrain: { value: .04 }, uFlash: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse, tOver; uniform float uTime, uFade, uCA, uCol, uGrain, uFlash; varying vec2 vUv;
+    void main(){
+      float c1 = smoothstep(0.0, .55, uCol), c2 = smoothstep(.55, 1.0, uCol);
+      vec2 sc = vec2(mix(1.0, .002, c2), mix(1.0, .004, c1)), q = (vUv - .5) / sc + .5;
+      float inside = step(0.0, q.x) * step(q.x, 1.0) * step(0.0, q.y) * step(q.y, 1.0);
+      vec2 d = (q - .5) * uCA;
+      vec3 col = vec3(texture2D(tDiffuse, q + d).r, texture2D(tDiffuse, q).g, texture2D(tDiffuse, q - d).b);
+      vec4 o = texture2D(tOver, q); float oa = texture2D(tOver, q + d * 2.0).a;
+      col = mix(col, o.rgb, o.a); col.r = mix(col.r, 1.0, max(oa - o.a, 0.0) * .8);
+      col = col * inside + vec3(.95, .97, 1.0) * inside * (c1 * .9 + c2 * 1.5) * step(.001, uCol);
+      vec2 v = vUv - .5; col *= 1.0 - dot(v, v) * 1.25;
+      float n = fract(sin(dot(vUv * vec2(1301.0, 1733.0) + fract(uTime * 7.13) * 91.0, vec2(12.9898, 78.233))) * 43758.5453);
+      col += (n - .5) * uGrain + vec3(1.0, .9, .8) * uFlash; col *= 1.0 - uFade;
+      gl_FragColor = vec4(col, 1.0); }` });
+composer.addPass(fin); fin.uniforms.tOver.value = ovTex; // ShaderPass clones texture uniforms; point it back at the live overlay
+ovTex.premultiplyAlpha = false;
+
+// ---------- overlay typography ----------
+let ovS = 1, ovX = 0, ovY = 0; // design space 1080x1350 fitted into the screen
+const project = (v) => { const p = v.clone().project(cam); return [((p.x + 1) / 2 * OV.width - ovX) / ovS, ((1 - p.y) / 2 * OV.height - ovY) / ovS, p.z < 1]; };
+const shade = (on) => { og.shadowColor = on ? 'rgba(0,0,0,.75)' : 'transparent'; og.shadowBlur = on ? 22 : 0; };
+function words(list, t, x, y, size, maxW, opt = {}) { // word-by-word reveal; returns the y after the last line
+  og.font = F(size, opt.w ?? 700); const lh = size * 1.28; let cx = x, cy = y;
+  for (const w of list) { const s = (opt.lower && !/^\W*[A-Z]\W*$/.test(w.w) ? w.w.toLowerCase() : w.w.toUpperCase()) + ' ', ww = og.measureText(s).width;
+    if (cx + ww - size * .6 > x + maxW) { cx = x; cy += lh; }
+    const a = sm(w.t - .02, w.t + .12, t); if (a > 0) { og.globalAlpha = a * (opt.a ?? 1); og.fillStyle = opt.color ?? CREAM; og.fillText(s, cx, cy + (1 - a) * 8); }
+    cx += ww; }
+  og.globalAlpha = 1; return cy + lh;
+}
+const SENT = TL.sent, DLG = TL.dlg, PIN_U = new THREE.Vector3(-3.95, -1.75, 0), PIN_S = new THREE.Vector3(-3.95, 3.45, 0);
+const sentA = (i, t, hold = .7) => { const s = SENT[i], nx = SENT[i + 1]?.t ?? 1e9; return sm(s.t - .1, s.t + .05, t) * (1 - sm(s.t + s.dur + hold - .25, s.t + s.dur + hold, t)) * (1 - sm(nx - .3, nx - .08, t)); };
+function typeOn(s, t0, cps, t) { return s.slice(0, Math.max(0, Math.floor((t - t0) * cps))); }
+function drawOverlay(t) {
+  og.setTransform(1, 0, 0, 1, 0, 0); og.clearRect(0, 0, OV.width, OV.height); og.setTransform(ovS, 0, 0, ovS, ovX, ovY);
+  og.textBaseline = 'alphabetic'; og.textAlign = 'left'; shade(true);
+  // title: the hook, already on screen at frame 0
+  if (t < 5.2) { const a = 1 - sm(4.75, 5.15, t), L = ['THE FIRST', 'MESSAGE ON', 'THE INTERNET'];
+    og.globalAlpha = a; og.fillStyle = CREAM; og.font = F(112); let n = 0;
+    const k = 1 + .05 * (1 - sm(0, .22, t)); og.save(); og.translate(66, 140); og.scale(k, k); L.forEach((ln, i) => og.fillText(ln, 0, 60 + i * 118)); og.restore();
+    const W0 = SENT[0].words, at = (w) => W0.find((x) => x.w.startsWith(w)).t;
+    og.font = F(44); og.globalAlpha = a * .85;
+    [['29 OCT', at('twenty')], ['1969', at('nineteen')], ['22:30', at('Ten')]].reduce((x, [s, tt]) => { const v = typeOn(s, tt, 30, t); og.fillText(v, x, 560); return x + og.measureText(s + '  ').width; }, 70);
+    og.globalAlpha = 1; }
+  // narration captions (top), except the lines set as big type
+  for (const i of [1, 2, 3, 4, 6, 8, 9]) { const a = sentA(i, t, i === 6 ? 2.6 : .7); if (a <= 0) continue;
+    og.globalAlpha = a; const ws = i === 6 ? SENT[i].words.slice(0, -1) : SENT[i].words;
+    words(ws, t, 66, 128, 38, 948, { lower: true, w: 400, a }); og.globalAlpha = 1; }
+  // names, pinned to the two sheets in the wide shots
+  const wide = sm(17, 20.5, cam.position.z) * (1 - sm(25.4, 26.2, t)) * (t < 28 ? 1 : 0);
+  if (wide > 0 && t > 5) { const W1 = SENT[1].words, at = (w) => W1.find((x) => x.w.startsWith(w)).t;
+    const pin = (v, lines) => { const [x, y, ok] = project(v); if (!ok) return; lines.forEach(([s, tt, sz = 44, al], k) => {
+      const v2 = typeOn(s, tt, 40, t); og.globalAlpha = wide * (al ?? 1); og.font = F(sz, k ? 400 : 700); og.fillStyle = CREAM; og.fillText(v2, x, y + k * sz * 1.25); }); og.globalAlpha = 1; };
+    pin(PIN_U, [['UCLA', at('UCLA')], ['CHARLEY KLINE', at('Charley'), 28, .8]]);
+    pin(PIN_S, [['SRI', at('SRI')], ['BILL DUVALL', at('Bill'), 28, .8]]); }
+  // the phone call, next to each end
+  for (const d of DLG) { const end = d.t + d.dur + (d.id === 'k_g' ? 30 : 1.4); if (t < d.t - .05 || t > end) continue;
+    let a = 1 - sm(end - .3, end, t); if (d.id === 'k_g') a *= 1 - sm(T.black - .05, T.black, t) + sm(T.after + .2, T.after + .6, t) * (1 - sm(32.4, 32.8, t));
+    let [x, y, ok] = project(d.side === 'ucla' ? PIN_U : PIN_S); if (!ok) continue; y += d.side === 'ucla' ? -150 : 150;
+    if (t > T.after) { x = 66; y = 1180; }
+    if (t < 28.6 && t >= 18.4 && cam.position.z < 15) { x = 66; y = d.side === 'ucla' ? 1180 : 300; }
+    const g = d.id === 'k_g' && t > T.crash - .05 && t < T.black;
+    og.globalAlpha = a; og.font = F(26, 700); og.fillStyle = CREAM; og.globalAlpha = a * .6; og.fillText(d.side.toUpperCase() + ' ON THE PHONE', x, y - 50); og.globalAlpha = a;
+    const col = g || (d.id === 'k_g' && t > T.after) ? RED : CREAM;
+    if (g) { const r = rng(Math.floor(t * 40)); x += (r() - .5) * 30; y += (r() - .5) * 14; }
+    words(d.words.map((w, i) => ({ ...w, w: (i ? '' : '“') + w.w.replace(/[?.]$/, '') + (i === d.words.length - 1 ? d.text.slice(-1) + '”' : '') })), t, x, y, 46, t > T.after || cam.position.z < 15 ? 940 : 420, { lower: true, w: 400, color: col, a });
+    og.globalAlpha = 1; }
+  // no reply from SRI
+  if (t > T.after + .4 && t < 32.8) { const a = sm(T.after + .4, T.after + .8, t) * (1 - sm(32.4, 32.8, t)); og.globalAlpha = a * .6; og.font = F(26);
+    og.fillStyle = CREAM; og.fillText('SRI ON THE PHONE', 66, 1252); og.globalAlpha = a; og.font = F(50, 400); og.fillStyle = CREAM;
+    og.fillText('…', 66, 1310); if (Math.floor(t * 2.4) % 2) og.fillRect(66 + og.measureText('… ').width, 1272, 28, 44); og.globalAlpha = 1; }
+  // the crash line, set big in the dark
+  { const a = sentA(5, t, 1.2); if (a > 0) { og.globalAlpha = a; words(SENT[5].words, t, 66, 640, 64, 948, { lower: true }); og.globalAlpha = 1; } }
+  // lo and behold
+  { const a = sentA(7, t, .9); if (a > 0) { og.textAlign = 'center'; og.globalAlpha = a; const W = SENT[7].words;
+    og.font = F(40, 400); og.fillStyle = CREAM; og.globalAlpha = a * sm(W[0].t, W[0].t + .15, t); og.fillText('as in,', 540, 1078);
+    og.font = F(92); og.globalAlpha = a * sm(W[2].t - .05, W[2].t + .15, t); og.fillText('LO AND', 540, 1176); og.globalAlpha = a * sm(W[4].t - .05, W[4].t + .15, t); og.fillText('BEHOLD.', 540, 1272);
+    og.textAlign = 'left'; og.globalAlpha = 1; } }
+  // it worked
+  { const w = SENT[8].words.at(-2), a = sm(w.t - .05, w.t + .1, t) * (1 - sm(43.0, 43.3, t)); if (a > 0) { og.textAlign = 'center'; og.globalAlpha = a; og.font = F(104); og.fillStyle = CREAM; og.fillText('IT WORKED.', 540, 1240); og.textAlign = 'left'; og.globalAlpha = 1; } }
+  // the log line, read out as it is written
+  if (t > T.pen - .2 && t < T.penEnd + .9) { const a = sm(T.pen - .2, T.pen + .2, t) * (1 - sm(T.penEnd + .5, T.penEnd + .9, t));
+    og.globalAlpha = a * .6; og.font = F(26); og.fillStyle = CREAM; og.fillText('UCLA IMP LOG, 29 OCT 1969', 66, 1190); og.globalAlpha = a; og.font = F(44, 400);
+    og.fillText(typeOn('22:30  talked to SRI host to host   CSK', T.pen, 11, t), 66, 1250); og.globalAlpha = 1; }
+  // ending: the first link on the planet, then the scale
+  { const s = SENT[10], a = sm(s.t - .1, s.t + .05, t); if (a > 0) { shade(false); const gr = og.createLinearGradient(0, 0, 0, 480); gr.addColorStop(0, 'rgba(3,4,6,.82)'); gr.addColorStop(1, 'rgba(3,4,6,0)');
+    og.globalAlpha = a; og.fillStyle = gr; og.fillRect(0, 0, 1080, 480); const gb = og.createLinearGradient(0, 980, 0, 1350); gb.addColorStop(0, 'rgba(3,4,6,0)'); gb.addColorStop(1, 'rgba(3,4,6,.9)'); og.fillStyle = gb; og.fillRect(0, 980, 1080, 370); shade(true); const W = s.words;
+    og.fillStyle = CREAM; words([{ ...W[0], w: '57' }, ...W.slice(1, 3)], t, 66, 190, 70, 948); words(W.slice(3), t, 66, 290, 70, 948);
+    if (t > T.globe && t < 55) { const pa = sm(T.globe + .15, T.globe + .5, t) * (1 - sm(53.9, 54.5, t)), v = new THREE.Vector3();
+      const [x1, y1] = project(FIRST.dots[0].getWorldPosition(v)), [x2, y2] = project(FIRST.dots[1].getWorldPosition(v));
+      og.fillStyle = CREAM; og.globalAlpha = pa; og.font = F(34); og.fillText('UCLA', x1 + 26, y1 + 12); og.fillText('SRI', x2 + 26, y2 + 12);
+      og.globalAlpha = pa * .75; og.font = F(26, 400); og.fillText('1969 · 350 MILES', x1 + 26, y1 + 50); }
+    if (t > 55) { const k = cl((t - 55.4) / 1.6), n = 2 * Math.pow(3e9, k); // 2 computers -> 6 billion people
+      og.fillStyle = CREAM; og.globalAlpha = sm(55.0, 55.3, t) * .8; og.font = F(30); og.fillText('29 OCT 1969: 2 COMPUTERS', 66, 1105);
+      og.globalAlpha = sm(55.35, 55.5, t); og.font = F(92); og.fillText((k >= 1 ? '≈ ' : '') + Math.round(n).toLocaleString('en-US'), 66, 1215);
+      og.globalAlpha = sm(56.95, 57.25, t) * .8; og.font = F(30); og.fillText('PEOPLE ONLINE IN 2025 (ITU)', 66, 1272); }
+    og.globalAlpha = 1; } }
+  ovTex.needsUpdate = true;
+}
+
+// ---------- one frame of the film at time t ----------
+const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpV = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+const G_AT = () => { S.g.font = F(300); const adv = S.g.measureText('M').width; return onSheet(S, (1600 - adv * 5) / 2 + adv * 2.5, 560 - 105, .05); };
+let gAt = null;
+function frame(t) {
+  placeCamera(t);
+  // lamps
+  const flick = (t0, n = 5) => { const k = (t - t0) * 18; return k < 0 ? 0 : k > n ? 1 : (Math.sin(k * 7.3) > -.2 ? 1 : .1); };
+  lampU.intensity = 1.9 * (t < T.crash ? 1 : t < T.after ? 0 : t < T.cutLO ? .25 : 1);
+  lampS.intensity = t < T.crash ? 1.5 * flick(11.25) : t < T.sriBack ? (t < T.crash + .15 ? 1.5 * (Math.sin(t * 90) > 0) : 0) : 1.5 * flick(T.sriBack) * (1 + .4 * sm(T.worked, T.worked + .4, t));
+  beam.intensity = t < T.beam ? 0 : 14 * flick(T.beam, 6) * (1 - sm(39.3, 39.4, t));
+  cone.material.uniforms.uA.value = beam.intensity / 14;
+  logLamp.intensity = t < T.cutLog ? 0 : 1.7;
+  moon.intensity = t > T.after && t < T.cutLO ? .45 : .1;
+  // wire, cord, labels
+  setDraw(wireGeo, sm(8.8, 10.9, t)); setDraw(glow.geometry, sm(8.8, 10.9, t)); setDraw(cordGeo, sm(11.6, 13.4, t));
+  labWire.material.opacity = .55 * sm(10.4, 11.2, t) * (1 - sm(50.8, 51.6, t)); labCord.material.opacity = .45 * sm(12.8, 13.6, t) * (1 - sm(50.8, 51.6, t));
+  const gu = glowMat.uniforms; gu.uDraw.value = sm(8.8, 10.9, t) * 1.001;
+  gu.uBase.value = t < T.crash ? .18 + .1 * Math.sin(t * 3) + (t > 26 ? .15 * Math.sin(t * 37) : 0) : t < T.sriBack ? 0 : .22;
+  gu.uRed.value = sm(26.6, 27.95, t) * (t < T.crash + 1 ? 1 : 0); gu.uBurn.value = t >= T.crash && t < T.sriBack ? sm(T.crash, T.crash + .35, t) : 0; gu.uDead.value = t >= T.crash && t < T.sriBack ? sm(T.crash + .2, T.crash + .5, t) : 0;
+  const act = []; PULSES.forEach((_, i) => { const u = pulseU(i, t); if (u >= 0) act.push(Math.min(u, 1)); });
+  for (let i = 0; i < 8; i++) gu.uP.value[i] = i < act.length ? act[i] : -1;
+  pulses.forEach((p, i) => { const u = act[i]; p.m.visible = u !== undefined && u < 1; p.l.intensity = p.m.visible ? 2.5 : 0;
+    if (p.m.visible) { WIRE.getPointAt(u, p.m.position); p.m.position.z = .1; p.l.position.copy(p.m.position).setZ(.5); } });
+  const sf = flash(T.strike, t, 10); flashL.intensity = sf * 6; flashL.position.copy(onSheet(U, 800, 700, 1.2));
+  // the G breaks: shards and sparks
+  gAt ??= G_AT();
+  const ts = t - T.crash; shards.visible = ts >= 0 && t < T.cutLO;
+  if (shards.visible) SH.forEach((s, i) => { const tau = Math.max(0, ts), land = (s.v[2] + Math.sqrt(s.v[2] ** 2 + 2 * 9.8 * .3)) / 9.8, tt = Math.min(tau, land), slide = Math.max(0, tau - land);
+    const fr = Math.min(slide, .25) * .25;
+    tmpV.set(gAt.x + Math.cos(s.a0) * s.r0 + s.v[0] * (tt + fr), gAt.y + Math.sin(s.a0) * s.r0 * 1.3 + s.v[1] * (tt + fr), Math.max(.02, .3 + s.v[2] * tt - 4.9 * tt * tt));
+    tmpE.set(s.w[0] * tt, s.w[1] * tt, s.w[2] * tt + (tau > land ? 0 : 0)); if (tau >= land) tmpE.set(0, 0, s.w[2] * land);
+    tmpM.compose(tmpV, tmpQ.setFromEuler(tmpE), one.clone().multiplyScalar(s.s)); shards.setMatrixAt(i, tmpM); });
+  shards.instanceMatrix.needsUpdate = true;
+  const sp = spGeo.attributes.position.array; sparks.visible = ts >= 0 && ts < 1.2;
+  SPK.forEach((s, i) => { const tau = ts - s.t; const ok = tau > 0 && tau < s.life; sp.set(ok ? [gAt.x + s.v[0] * tau, gAt.y + s.v[1] * tau, Math.max(.02, .3 + s.v[2] * tau - 4.9 * tau * tau)] : [0, 0, -50], i * 3); });
+  spGeo.attributes.position.needsUpdate = true;
+  // LO drops into the light
+  const fall = cl((t - (T.lo - .28)) / .28); LO.visible = t >= T.lo - .28 && t < 39.4;
+  LO.position.set(LO_AT.x, LO_AT.y, LO_Z + (1 - fall * fall) * 7 + (t > T.lo ? Math.abs(Math.sin((t - T.lo) * 14)) * Math.exp(-(t - T.lo) * 9) * .25 : 0));
+  LO.rotation.z = Math.sin(t * .35) * .02;
+  // dust: motes in the beam, then a burst when LO lands
+  const da = dGeo.attributes.position.array; dustMat.opacity = beam.intensity / 14 * .9; dust.visible = t > T.beam && t < 39.4;
+  DU.forEach((d, i) => { if (i < 180) { const h = (d[2] + t * .18) % 9, rr = Math.sqrt(d[1]) * (.4 + h * .2);
+      da.set([LO_AT.x + Math.cos(d[0] + t * .1) * rr * .6, LO_AT.y + .4 + Math.sin(d[0] + t * .1) * rr * .6, .2 + h], i * 3); }
+    else { const tau = t - T.lo; const ok = tau > 0 && tau < 1.6, sp2 = 1.5 + d[4] * 2.5;
+      da.set(ok ? [LO_AT.x + Math.cos(d[3]) * sp2 * Math.sqrt(tau) , LO_AT.y + Math.sin(d[3]) * sp2 * Math.sqrt(tau) * .6, .05 + d[1] * .5 * Math.sqrt(tau)] : [0, 0, -50], i * 3); } });
+  dGeo.attributes.position.needsUpdate = true;
+  // the planet
+  const onGlobe = t >= T.globe; W1.visible = !onGlobe; GL.visible = onGlobe; scene.fog = onGlobe ? null : FOG;
+  if (onGlobe) { ARCS.uniforms.uT.value = t; earthU.uLights.value = lerp(.5, 2.0, sm(T.globe + .3, 57.5, t)); earthU.uBase.value = .55;
+    GL.rotation.y = -Math.max(0, t - 56.5) * .05; }
+  glowMat.uniforms.uBase.value += sm(51.2, 52.3, t) * 2.5;
+  // sheets
+  drawU(t); drawS(t); if (t > T.cutLog - .5) drawLog(t);
+  // post
+  fin.uniforms.uTime.value = t;
+  fin.uniforms.uCol.value = t >= T.crash + .1 && t < T.black ? cl((t - T.crash - .1) / .42) : 0;
+  fin.uniforms.uFade.value = t < .0 ? 1 : (t >= T.black && t < T.after ? 1 : t >= T.after && t < T.after + .5 ? 1 - (t - T.after) / .5 : 0) + sm(60.3, 61, t);
+  fin.uniforms.uCA.value = .004 + .03 * flash([T.crash], t, 6) + .012 * flash([T.lo], t, 8) + .006 * flash(T.strike, t, 12);
+  bloom.strength = .55 + (t > T.globe ? .35 : 0); fin.uniforms.uFlash.value = flash([T.globe], t, 10) * .6;
+  drawOverlay(t);
+  composer.render();
+}
+
+// ---------- size ----------
+function resize() {
+  const w = innerWidth, h = innerHeight, pr = R.getPixelRatio(); R.setSize(w, h, false); composer.setPixelRatio(pr); composer.setSize(w, h);
+  cam.aspect = w / h; cam.fov = cam.aspect < .8 ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(16)) * .8 / cam.aspect)) : 32; cam.updateProjectionMatrix();
+  OV.width = Math.round(w * pr); OV.height = Math.round(h * pr); ovS = Math.min(OV.width / 1080, OV.height / 1350); ovX = (OV.width - 1080 * ovS) / 2; ovY = (OV.height - 1350 * ovS) / 2;
+  ovTex.dispose(); bokeh.uniforms.aspect.value = cam.aspect;
+}
+addEventListener('resize', resize); resize();
+
+// ---------- sound: one cue list for the live page and the offline soundtrack ----------
+const VO = ['narrator', 'k_l', 'd_l', 'k_o', 'd_o', 'k_g'];
+async function loadVO(ac) { const out = {}; await Promise.all(VO.map(async (k) => { out[k] = await ac.decodeAudioData(await (await fetch(`vo/${k}.mp3`)).arrayBuffer()); })); return out; }
+function cueList() {
+  const c = [['drone', 0, T.crash, 0], ['drone', T.after + .3, T.dur, 1], ['hum', 0, T.crash], ['hum', T.after + 1, T.dur]];
+  SENT.forEach((s) => c.push(['vo', s.t, 'narrator', s.off, s.dur]));
+  DLG.forEach((d) => c.push(['phone', d.t, d.id, 0, d.dur], ['line', d.t - .08, d.dur + .2]));
+  c.push(['whoosh', 8.8, 2.1, 1], ['click', 11.25], ['whoosh', 11.6, 1.8, 0]);
+  T.strike.forEach((s, i) => c.push(['clack', s, 1.1], ['zip', PULSES[i][0], PULSES[i][1] - PULSES[i][0], i === 2 ? .5 : 1], ['clack', PULSES[i][1], .45]));
+  c.push(['air', T.crash + .4, 2.4], ['clack', .02, 1.2], ['thump', .02, .6], ['dread', 26.05, 27.95], ['crash', T.crash], ['crt', T.crash + .1], ['click', T.beam], ['thump', T.beam, .5], ['lamp', T.beam, 39.4], ['slam', T.lo], ['bell', SENT[7].words.at(-1).t, .45]);
+  T.retry.forEach((r, i) => c.push(['clack', r, .8], ['zip', PULSES[3 + i][0], .47, .6], ['clack', PULSES[3 + i][1], .4]));
+  c.push(['clack', T.fill, .4], ['clack', T.fill + .1, .4], ['clack', T.fill + .05, .5]);
+  c.push(['click', T.sriBack], ['bell', T.worked, .7], ['chord', T.worked], ['rustle', T.cutLog + .1]);
+  LOGL.segs.forEach(([, , a, b]) => c.push(['scratch', a, b]));
+  const r = rng(4); for (let i = 0; i < 90; i++) c.push(['blip', ARCS.times[Math.floor(r() * ARCS.times.length)], r()]);
+  c.push(['whoosh', 51.0, 1.4, 1], ['slam', T.globe], ['swell', T.globe, T.dur]);
+  for (let i = 0; i < 26; i++) c.push(['tick', 55.4 + 1.6 * Math.pow(i / 26, .6)]);
+  c.push(['bell', 57.05, .55]);
+  return c.sort((a, b) => a[1] - b[1]);
+}
+function synth(ac, out, bufs) {
+  const r = rng(7), nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), nd = nb.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = r() * 2 - 1;
+  const env = (node, w, dur, gain, att = .001, dst = out) => { const g = ac.createGain(); g.gain.setValueAtTime(0, w); g.gain.linearRampToValueAtTime(gain, w + att); g.gain.exponentialRampToValueAtTime(.0001, w + dur); node.connect(g).connect(dst); return g; };
+  const noise = (w, dur, type, f, q, gain, att, dst) => { const s = ac.createBufferSource(); s.buffer = nb; s.loop = true; const fl = ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; s.connect(fl); env(fl, w, dur, gain, att, dst); s.start(w, r() * 1.5); s.stop(w + dur + .05); return fl; };
+  const tone = (w, dur, type, f0, f1, gain, att) => { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, w); if (f1) o.frequency.exponentialRampToValueAtTime(f1, w + dur); env(o, w, dur, gain, att); o.start(w); o.stop(w + dur + .05); return o; };
+  const bed = (w0, w1, gain, nodes) => { const g = ac.createGain(); g.gain.setValueAtTime(0, w0); g.gain.linearRampToValueAtTime(gain, w0 + .6); g.gain.setValueAtTime(gain, Math.max(w0 + .6, w1 - .02)); g.gain.linearRampToValueAtTime(0, w1); g.connect(out); nodes(g); };
+  const phoneFx = (() => { const hp = ac.createBiquadFilter(), lp = ac.createBiquadFilter(), ws = ac.createWaveShaper(), g = ac.createGain();
+    hp.type = 'highpass'; hp.frequency.value = 380; lp.type = 'lowpass'; lp.frequency.value = 3100; const cur = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; cur[i] = Math.tanh(x * 2.2) / Math.tanh(2.2); }
+    ws.curve = cur; g.gain.value = 1.15; hp.connect(lp).connect(ws).connect(g).connect(out); return hp; })();
+  return {
+    vo: (w, _, k, off, dur, skip = 0) => { const s = ac.createBufferSource(); s.buffer = bufs[k]; const g = ac.createGain(), d = dur - skip; // short fades: no clicks at the cuts
+      g.gain.setValueAtTime(0, w); g.gain.linearRampToValueAtTime(1.25, w + .012); g.gain.setValueAtTime(1.25, w + d - .03); g.gain.linearRampToValueAtTime(0, w + d); s.connect(g).connect(out); s.start(w, off + skip, d); },
+    phone: (w, _, k, off, dur, skip = 0) => { const s = ac.createBufferSource(); s.buffer = bufs[k]; const g = ac.createGain(); g.gain.value = k[0] === 'd' ? 1.45 : 1; s.connect(g).connect(phoneFx); s.start(w, off + skip, dur - skip); },
+    line: (w, dur) => noise(w, dur, 'bandpass', 2200, .7, .02, .05),
+    air: (w, dur) => noise(w, dur, 'lowpass', 380, .7, .014, dur * .4),
+    tick: (w) => noise(w, .02, 'highpass', 3500, .7, .12),
+    clack: (w, v) => { noise(w, .07, 'bandpass', 2300, .9, .8 * v); noise(w, .012, 'highpass', 6000, .7, .35 * v); tone(w, .09, 'sine', 180, 55, .55 * v); noise(w + .035, .03, 'bandpass', 1200, 2, .22 * v); },
+    zip: (w, dur, v) => { tone(w, dur, 'sine', 320, 2600, .06 * v, dur * .3); const f = noise(w, dur, 'bandpass', 500, 4, .05 * v, dur * .5); f.frequency.setValueAtTime(500, w); f.frequency.exponentialRampToValueAtTime(5000, w + dur); },
+    whoosh: (w, dur, up) => { const f = noise(w, dur, 'bandpass', up ? 250 : 2400, 1.1, .22, dur * .7); f.frequency.setValueAtTime(up ? 250 : 2400, w); f.frequency.exponentialRampToValueAtTime(up ? 3200 : 300, w + dur); },
+    click: (w) => { noise(w, .015, 'highpass', 2500, .7, .5); tone(w, .05, 'square', 900, 300, .05); },
+    thump: (w, v) => { tone(w, .5, 'sine', 90, 34, .9 * v); noise(w, .06, 'lowpass', 900, .7, .45 * v); },
+    dread: (w0, w1) => { const d = w1 - w0; [180, 187].forEach((f) => tone(w0, d, 'sine', f, f * 2.3, .06, d * .9)); const g = noise(w0, d, 'bandpass', 1600, 6, .05, d * .95); g.frequency.setValueAtTime(400, w0); g.frequency.exponentialRampToValueAtTime(5200, w1); },
+    crash: (w) => { const f = noise(w, 1.2, 'lowpass', 9000, .8, 1, .002); f.frequency.setValueAtTime(9000, w); f.frequency.exponentialRampToValueAtTime(150, w + 1.0);
+      tone(w, .8, 'sine', 70, 26, 1); tone(w, .5, 'sawtooth', 240, 30, .2); for (let i = 0; i < 14; i++) noise(w + r() * .45, .01 + r() * .02, 'highpass', 4000, .7, .3 + r() * .4); },
+    crt: (w) => { tone(w, .42, 'sine', 9500, 500, .07, .005); tone(w + .4, .25, 'sine', 120, 40, .4); },
+    lamp: (w0, w1) => bed(w0, w1, .02, (g) => [120, 240].forEach((f, i) => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; const og2 = ac.createGain(); og2.gain.value = [1, .4][i]; o.connect(lp).connect(og2).connect(g); o.start(w0); o.stop(w1 + .05); })),
+    slam: (w) => { tone(w, 1.2, 'sine', 62, 28, 1.1); noise(w, .09, 'lowpass', 1400, .7, .7); noise(w, .9, 'lowpass', 500, .7, .25, .02); tone(w, 1.6, 'triangle', 196, 0, .05); tone(w, 1.6, 'sine', 293.7, 0, .03); },
+    bell: (w, v) => [[1, .3, 2.2], [2.76, .09, 1.3], [5.4, .04, .7]].forEach(([m, gn, d]) => tone(w, d, 'sine', 1046.5 * m, 0, gn * v)),
+    chord: (w) => [220, 277.2, 329.6, 440].forEach((f, i) => tone(w, 3.2, 'sine', f, 0, [.05, .035, .035, .02][i], .35)),
+    rustle: (w) => { noise(w, .35, 'bandpass', 2600, .6, .14, .05); noise(w + .15, .3, 'bandpass', 1800, .6, .1, .05); },
+    scratch: (w0, w1) => { const s = ac.createBufferSource(); s.buffer = nb; s.loop = true; const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 3800; f.Q.value = 1.3; const g = ac.createGain(); g.gain.setValueAtTime(0, w0);
+      for (let x = w0; x < w1; x += .035) g.gain.linearRampToValueAtTime(.015 + r() * .07, x); g.gain.linearRampToValueAtTime(0, w1 + .02); s.connect(f).connect(g).connect(out); s.start(w0); s.stop(w1 + .05); },
+    blip: (w, v) => tone(w, .5, 'sine', [440, 523.3, 587.3, 659.3, 784, 880, 1046.5][Math.floor(v * 7)], 0, .02 + v * .015),
+    swell: (w0, w1) => bed(w0, w1, .035, (g) => [110, 164.8, 220, 329.6].forEach((f) => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(300, w0); lp.frequency.exponentialRampToValueAtTime(2200, w1 - .5); o.connect(lp).connect(g); o.start(w0); o.stop(w1 + .05); })),
+    drone: (w0, w1, dark) => bed(w0, w1, dark ? .045 : .05, (g) => [55, 55.35, 82.4].forEach((f) => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f * (dark ? .944 : 1); const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = dark ? 200 : 280; o.connect(lp).connect(g); o.start(w0); o.stop(w1 + .05); })),
+    hum: (w0, w1) => bed(w0, w1, .02, (g) => [60, 120, 180].forEach((f, i) => { const o = ac.createOscillator(), og2 = ac.createGain(); o.frequency.value = f; og2.gain.value = [1, .5, .25][i]; o.connect(og2).connect(g); o.start(w0); o.stop(w1 + .05); })),
+  };
+}
+const SPAN = new Set(['drone', 'hum', 'lamp', 'dread', 'scratch', 'swell']);
+function schedule(ac, dest, from, at, bufs) { // film time `from` plays at audio time `at`
+  const comp = ac.createDynamicsCompressor(), master = ac.createGain(); master.gain.value = .8; master.connect(comp).connect(dest);
+  const S2 = synth(ac, master, bufs);
+  for (const [k, t, a, b, c, d] of cueList()) {
+    if (SPAN.has(k)) { if (a > from) S2[k](at + Math.max(0, t - from), at + (a - from), b); }
+    else if (k === 'vo' || k === 'phone') { if (t + c > from) S2[k](at + Math.max(0, t - from), 0, a, b, c, Math.max(0, from - t)); }
+    else if (t >= from) S2[k](at + t - from, a ?? 1, b);
+  }
+  return master;
+}
+window.renderSoundtrack = async () => {
+  const sr = 48000, oc = new OfflineAudioContext(2, Math.ceil(T.dur * sr), sr);
+  schedule(oc, oc.destination, 0, 0, await loadVO(oc));
+  const b = await oc.startRendering(), n = b.length, L = b.getChannelData(0), Rr = b.getChannelData(1);
+  const v = new DataView(new ArrayBuffer(44 + n * 4)), ws = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  ws(0, 'RIFF'); v.setUint32(4, 36 + n * 4, true); ws(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true); ws(36, 'data'); v.setUint32(40, n * 4, true);
+  for (let i = 0; i < n; i++) { v.setInt16(44 + i * 4, cl(L[i], -1, 1) * 32767, true); v.setInt16(46 + i * 4, cl(Rr[i], -1, 1) * 32767, true); }
+  let s = ''; const u = new Uint8Array(v.buffer); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+
+// ---------- playback, scrub, sound ----------
+let t0 = null, scrub = null, now = 0, ac = null, master = null, soundOn = false, bufs = null;
+const filmT = () => scrub ?? (now - t0) / 1000;
+function audioFrom(t) { if (master) { master.disconnect(); master = null; } if (soundOn && ac && bufs) master = schedule(ac, ac.destination, t, ac.currentTime + .03, bufs); }
+const snd = document.getElementById('snd'), bar = document.getElementById('bar');
+if (matchMedia('(pointer: coarse)').matches) document.getElementById('hint').textContent = 'drag to scrub';
+snd.onclick = async (e) => { e.stopPropagation(); soundOn = !soundOn; if (soundOn && !ac) ac = new AudioContext(); ac?.resume();
+  snd.textContent = 'sound: ' + (soundOn ? 'on' : 'off'); snd.setAttribute('aria-pressed', soundOn);
+  if (soundOn && !bufs) { snd.textContent = 'sound: loading'; bufs = await loadVO(ac); snd.textContent = 'sound: on'; } audioFrom(filmT()); };
+snd.onpointerdown = (e) => e.stopPropagation();
+const scrubTo = (e) => { scrub = cl(e.clientX / innerWidth) * T.dur; };
+cv.addEventListener('pointerdown', (e) => { if (PLAY) return; cv.setPointerCapture(e.pointerId); scrubTo(e); audioFrom(1e9); });
+cv.addEventListener('pointermove', (e) => { if (scrub !== null) scrubTo(e); });
+const release = () => { if (scrub === null) return; t0 = now - scrub * 1000; const s = scrub; scrub = null; audioFrom(s); };
+cv.addEventListener('pointerup', release); cv.addEventListener('pointercancel', release);
+addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); t0 = now; audioFrom(0); } if (e.key === 'm') snd.click(); });
+function loop(ts) {
+  requestAnimationFrame(loop);
+  now = ts; if (t0 === null) t0 = ts;
+  let t = FREEZE ?? filmT();
+  if (!PLAY && FREEZE === null && scrub === null && t > T.dur + 1.5) { t0 = ts; t = 0; audioFrom(0); }
+  t = Math.min(t, T.dur - 1e-3);
+  frame(t);
+  bar.style.transform = `scaleX(${t / T.dur})`;
+}
+window.__ready = true;
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
